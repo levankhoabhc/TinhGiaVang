@@ -2,7 +2,7 @@
 const CHI_TO_GRAM = 3.75;
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes in milliseconds
 const API_URL =
-  "https://cors-anywhere.herokuapp.com/https://giavang.pnj.com.vn/";
+  "https://api.allorigins.win/raw?url=https://giavang.pnj.com.vn/";
 const PRICE_PER_CHI = 10; // Prices are for 10 Chỉ
 
 // Debug flag
@@ -19,6 +19,7 @@ function debugLog(...args) {
 let goldPrices = [];
 let lastFetchTime = 0;
 let currentUnit = "chi";
+let isFetching = false;
 
 // DOM Elements
 const goldTypeSelect = document.getElementById("goldType");
@@ -48,6 +49,12 @@ function convertWeight(value, fromUnit, toUnit) {
 
 // API Functions
 async function fetchGoldPrices() {
+  if (isFetching) {
+    debugLog("Already fetching prices, skipping...");
+    return null;
+  }
+
+  isFetching = true;
   try {
     debugLog("Starting fetchGoldPrices");
     debugLog("Fetching from URL:", API_URL);
@@ -60,6 +67,10 @@ async function fetchGoldPrices() {
     }
 
     const html = await response.text();
+    if (!html || html.length === 0) {
+      throw new Error("Empty response received");
+    }
+
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, "text/html");
     debugLog("Document parsed successfully");
@@ -192,6 +203,8 @@ async function fetchGoldPrices() {
     console.error("Error in fetchGoldPrices:", error);
     debugLog("Error stack:", error.stack);
     return null;
+  } finally {
+    isFetching = false;
   }
 }
 
@@ -220,6 +233,9 @@ async function updateGoldPrices() {
     updateTimeDisplay();
   } else {
     debugLog("Failed to update gold prices");
+    // Show error message to user
+    const errorMessage = "Không thể cập nhật giá vàng. Vui lòng thử lại sau.";
+    goldTypeSelect.innerHTML = `<option value="">${errorMessage}</option>`;
   }
 }
 
@@ -252,9 +268,9 @@ function updateGoldTypeOptions() {
 function calculatePrice() {
   const selectedType = goldTypeSelect.value;
   const weight = parseFloat(weightInput.value);
-  const fee = parseInt(feeInput.value);
+  const fee = parseFloat(feeInput.dataset.rawValue || "0");
 
-  if (!selectedType || isNaN(weight) || isNaN(fee)) {
+  if (!selectedType || isNaN(weight)) {
     alert("Vui lòng điền đầy đủ thông tin!");
     return;
   }
@@ -273,28 +289,29 @@ function calculatePrice() {
   // Show price with thousands in the current price display
   currentPriceSpan.textContent = formatNumber(selectedGold.sell / 10);
   finalPriceSpan.textContent = formatNumber(finalPrice);
+  resultDiv.style.display = "block";
 }
 
 // Event Listeners
 calculateBtn.addEventListener("click", calculatePrice);
 
-// Add formatting for fee input
+// Format fee input display while keeping raw value
 feeInput.addEventListener("input", function (e) {
   // Remove all non-digit characters
   let value = this.value.replace(/\D/g, "");
 
-  // Convert to number and format with thousands separator
+  // Store the raw value in a data attribute
+  this.dataset.rawValue = value;
+
+  // Display formatted value
   if (value) {
     this.value = formatNumber(parseInt(value));
   }
 });
 
-// Add formatting for fee input when focus is lost
+// Format fee input when focus is lost
 feeInput.addEventListener("blur", function (e) {
-  // Remove all non-digit characters
-  let value = this.value.replace(/\D/g, "");
-
-  // Convert to number and format with thousands separator
+  let value = this.dataset.rawValue || "";
   if (value) {
     this.value = formatNumber(parseInt(value));
   }
@@ -322,7 +339,6 @@ unitToggleButtons.forEach((button) => {
 // Initialize
 async function init() {
   await updateGoldPrices();
-  setInterval(updateGoldPrices, CACHE_DURATION);
   setInterval(updateTimeDisplay, 1000);
 }
 
